@@ -1,0 +1,24 @@
+
+dataset_path: Tianli/robovqa
+dataset_kwargs:  
+  token: True  
+task: "robovqa"  
+test_split: validation  
+output_type: generate_until  
+process_docs: !function utils.robovqa_process_docs 
+doc_to_text: !function utils.robovqa_doc_to_text  
+doc_to_visual: !function utils.robovqa_doc_to_visual
+doc_to_target: "answer"  
+generation_kwargs:  
+  max_new_tokens: 2000
+  temperature: 0  
+  top_p: 1.0  
+  num_beams: 1  
+  do_sample: false  
+process_results: !function utils.robovqa_process_results  
+metric_list:  
+  - metric: acc  
+    aggregation: !function utils.robovqa_aggregate_accuracy  
+    higher_is_better: true  
+metadata:  
+  - version: 0.0
