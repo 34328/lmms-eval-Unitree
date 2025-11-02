@@ -1,0 +1,4 @@
+group: openeqa
+task:
+- openeqa_hm3d
+- openeqa_scannet

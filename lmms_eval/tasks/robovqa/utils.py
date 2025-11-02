@@ -283,7 +283,6 @@ def robovqa_process_docs(dataset):
     expanded_docs = []  
     id = 0
     for doc in dataset:  
-        uid  = doc["uid"]  # 唯一标识符
         video_filename = doc["video"]  # 视频文件名  t
         text = doc["text"]  # 包含多个问题和答案的文本
         
@@ -320,8 +319,8 @@ def robovqa_doc_to_visual(doc):
     # 如果文件不存在,从 URL 下载  
     if not os.path.exists(local_video_path):  
         try:  
-            eval_logger.info(f"Downloading video from {video_url} to {local_video_path}")  
-            response = requests.get(video_url, stream=True, timeout=60)  
+            # eval_logger.info(f"Downloading video from {video_url} to {local_video_path}")  
+            response = requests.get(video_url, stream=True, timeout=120)  
             response.raise_for_status()  
               
             with open(local_video_path, 'wb') as f:  
@@ -399,13 +398,13 @@ def robovqa_aggregate_accuracy(results):
       
     # 输出 markdown 表格  
     eval_logger.info("\n" + "=" * 60)  
-    eval_logger.info("ERQA Results by Question Type:")  
+    eval_logger.info("Results by Question Type:")  
     eval_logger.info("=" * 60)  
       
     # 表格头  
     table_lines = []  
-    table_lines.append("| Question Type | Accuracy | Correct | Total |")  
-    table_lines.append("|---------------|----------|---------|-------|")  
+    table_lines.append("|       Question Type      | Accuracy | Correct | Total |")  
+    table_lines.append("|--------------------------|----------|---------|-------|")  
       
     # 按 question_type 排序并添加行  
     for qtype in sorted(question_type_stats.keys()):  
@@ -414,8 +413,8 @@ def robovqa_aggregate_accuracy(results):
         table_lines.append(f"| {qtype} | {accuracy:.2f}% | {stats['correct']} | {stats['total']} |")  
       
     # 添加总计行  
-    table_lines.append("|---------------|----------|---------|-------|")  
-    table_lines.append(f"| **Overall** | **{overall_accuracy:.2f}%** | **{total_correct}** | **{total_count}** |")  
+    table_lines.append("|--------------------------|----------|---------|-------|")  
+    table_lines.append(f"|         Overall          | {overall_accuracy:.2f}% | {total_correct} | {total_count} |")  
       
     # 输出表格  
     for line in table_lines:  
@@ -429,105 +428,88 @@ def robovqa_aggregate_accuracy(results):
 def check_semantic_consistency(pred, doc):  
     """使用 OpenAI API 判断预测答案和标准答案的语义一致性"""  
     messages = f"""
-        You are an AI assistant tasked with evaluating whether a response matches the correct answer to a given question, considering both \
-            the primary answer and any extra correct answers.
+        You are an AI assistant tasked with evaluating whether a response matches the correct answer to a given question.
 
-        ## Evaluation Rules
-        (1) Output 1 if the response matches the answer or any of the extra answers exactly or with synonymous/equivalent wording.
+        Evaluation Rules
+        (1) Output 1 if the response matches the answer exactly or with synonymous/equivalent wording.
         - Synonyms, paraphrases, or different surface forms of the same meaning count as matches.
-        - Minor wording differences (e.g., “Wood panel” vs. “Wood) count as matches.
-        (2) Output 0 if the response is incorrect, contradictory, or refers to a different entity,object, or attribute than the answer and all extra answers.
+        - Minor wording differences (e.g., “put tomato into fridge” vs. “the person is putting a tomato 
+        in the fridge”) count as matches.
+        (2) Output 0 if the response is incorrect, contradictory, or refers to a different entity, object, or attribute.
         - If the answer and response describe different objects, actions, or states, mark as 0.
         - If the response introduces additional details that change the meaning of the answer, mark as 0.
 
-        ##Special Cases
-        - Similar meaning: Output 1 if the response conveys essentially the same meaning as the answer and does not omit or add critical \
-            information (e.g., answer: “A ceiling fan”, response: “fan”).
-        - Partial matches: If the response overlaps but misses or alters essential details (e.g.,answer: “put meat and tomato on the table” vs.\
-              response: “put meat on the table”), output 0.
-        - Granularity differences: If the response is more specific but still semantically equivalent (e.g., answer: “woman”, response: “Jessica”), output 1.
-        - Yes/No questions: Only output 1 if the polarity matches (yes <-> yes, no <-> no). Any  mismatch outputs 0, regardless of explanation.
-        - Ambiguity: If the response cannot be reasonably interpreted as equivalent to the answer,output 0.
-
-        ## Examples:
-        Example 1:
-        Question: Is it overcast?
-        Answer: no
-        Extra Answers: ["doesn’t look like it", "no", "it’s sunny"]
-        Response: yes
-        Your output: 0
-
-        Example 2:
-        Question: Who is standing at the table?
-        Answer: woman
-        Extra Answers: ["a woman", "a lady", "woman"]
-        Response: Jessica
-        Your output: 1
-
-        Example 3:
-        Question: Are there drapes to the right of the bed?
+        Special Cases
+        - Similar meaning: Output 1 if the response conveys essentially the same meaning as the answer and does not omit or add critical information \
+            (e.g., answer:“put meat on the table”, response:“The person moved meat from the fridge to the counter.”).
+        - Partial matches: If the response overlaps but misses or alters essential details (e.g., answer:“put meat and tomato on the table” vs. response:“put meat on the table”), output 0.
+        - Granularity differences: If the response is more specific but still semantically equivalent(e.g., answer:“woman”, response:“Jessica”), output 1.
+        - Yes/No questions: Only output 1 if the polarity matches (yes <-> yes, no <-> no). Any mismatch outputs 0, regardless of explanation.
+        - Ambiguity: If the response cannot be reasonably interpreted as equivalent to the answer, output 0.
+        
+        Examples
+        Example 1
+        Question: Did the attribute of plant changed because of the action getting something from something?
         Answer: yes
-        Extra Answers: ["yes, there are drapes", "yeah", "the drapes are to the right of the king bed"]
-        Response: yes
+        Response: Yes, the attribute of plant got watered from no to yes after the action getting something from something.
         Your output: 1
-
-        Example 4:
-        Question: What material is the ceiling in the living room?
-        Answer: Wood panel
-        Extra Answers: null
-        Response: wood
-        Your output:1
-
-        Example 5:
-        Question: What is in between the two picture frames on the blue wall in the living room?
-        Answer: The TV
-        Extra Answers: null
-        Response: air conditioner
+       
+        Example 2 Question: what status of fork changed while the person do the first action did before he/she put something to something?
+        Answer: cleanliness
+        Response: fork was in drawer before the person put fork to sink.
+        Your output: 0
+        
+        Example 3
+        Question: What is the person doing before he/she close something?
+        Answer: Put tomato to fridge
+        Response: The person is putting a tomato in the fridge.
+        Your output: 1
+        
+        Example 4
+        Question: What is the first action the person did in the video?
+        Answer: Work on sofa
+        Response: The person pulled out a chair.
         Your output: 0
 
-        Example 6:
-        Question: Is the house doorway open or closed?
-        Answer: Open
-        Extra Answers: null
-        Response: The house doorway is open.
+        Example 5
+        Question: How did the person changed the spatial relationships of meat?
+        Answer: Put meat to table
+        Response: The person moved meat from the fridge to the counter.
         Your output: 1
 
-        Example 7:
-        Question: Is my backyard safe to let me dog out in?
-        Answer: Yes, its fenced.
-        Extra Answers: null
-        Response: yes
+        Example 6
+        Question: what status of fridge changed while the person do the first action did after he/she point to something?
+        Answer: openess
+        Response: The fridge was closed before the person point to something, and after that the fridge changed to open.
         Your output: 1
 
-        Example 8:
-        Question: What is hanging from the ceiling in the bedroom?
-        Answer: A ceiling fan
-        Extra Answers: null
-        Response: fan
-        Your output: 1
+        Example 7
+        Question: which object changed its status when the person do the last action in the video?
+        Answer: fork
+        Response: spoon
+        Your output: 0
 
-        Example 9:
-        Question: Where is the full body mirror?
-        Answer: In the bedroom by the door
-        Extra Answers: ["next to the bedroom door", "just inside the bedroom", "in the bedroom", "in
-        the bedroom right next to the door"]
-        Response: The full body mirror is in the bedroom.
-        Your output: 1
+        Example 8
+        Question: What is the action that just happened?
+        Answer: Place can in the tray
+        Response: The person puts the can on the table.
+        Your output: 0
 
-        Example 10:
-        Question: What is leaning in the corner by the coat rack?
-        Answer: An umbrella
-        Extra Answers: null
-        Response: chair
+        Example 9
+        Question: current goal is: Please place the fruits in the bowl then place the kitchen supplies into the holder. \
+            last 20 steps: 1. put white packet in the bowl 2. put white packet in the bowl 3. put yellow packet in the bowl \
+            4. put blue packet in the bowl 5. put blue packet  in the bowl 6. put blue packet in the bowl 7. put yellow packet in the bowl. What’s the immediate next step?
+        Answer: Put duster in the black stand
+        Response: put brush in the holder
         Your output: 0
 
         Your Turn:
         Question: {doc["question"]}
         Answer: {doc["answer"]}
         Response: {pred}
-
+        Your output:
 """
-    time.sleep(2)
+    time.sleep(0.5)
     try:  
         # 使用 llm_judge API 进行二元评估  
         result = server.evaluate_binary(  
