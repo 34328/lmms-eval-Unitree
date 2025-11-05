@@ -10,8 +10,7 @@ from lmms_eval.llm_judge.protocol import ServerConfig
 from lmms_eval.llm_judge import get_server  
   
 # 初始化 OpenAI 客户端  
-# API_KEY = os.getenv("OPENAI_API_KEY", "bce-v3/ALTAK-tnSvoDJzbcjn9wFinrEOm/e31cebbf2e9d7256e6b4fd38b90f96422f1d036b")  
-# client = OpenAI(api_key=API_KEY, base_url="https://qianfan.baidubce.com/v2") 
+
 API_TYPE = os.getenv("API_TYPE", "openai")  
 VIDEO_DIR = os.getenv("QA_VIDEO_PATH", "/home/unitree/桌面/datasets/qa_videos")  
   

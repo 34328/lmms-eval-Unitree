@@ -12,7 +12,8 @@ from lmms_eval.llm_judge import get_server
 # 后处理模型 设置
 API_TYPE = os.getenv("API_TYPE", "openai")   
 server_config = ServerConfig(  
-    model_name="qwen3-235b-a22b-instruct-2507",  
+    # model_name="qwen3-235b-a22b-instruct-2507",  
+    model_name="Qwen3-VL-235B-A22B",
     temperature=0.0,  
     max_tokens=5  
 )  

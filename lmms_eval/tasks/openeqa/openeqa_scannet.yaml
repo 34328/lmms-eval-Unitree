@@ -10,7 +10,7 @@ doc_to_visual: !function utils.openeqa_doc_to_visual
 doc_to_text: !function utils.openeqa_doc_to_text  
 doc_to_target: "answer"  
 generation_kwargs:  
-  max_new_tokens: 100 
+  max_new_tokens: 500 
   temperature: 0  
   top_p: 1.0  
   num_beams: 1  
