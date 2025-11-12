@@ -1,0 +1,6 @@
+group: omni3d
+task:
+- omni3d_arkitscenes
+- omni3d_hypersim
+- omni3d_objectron
+- omni3d_sunrgbd
