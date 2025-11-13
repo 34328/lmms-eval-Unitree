@@ -1,0 +1,26 @@
+dataset_path: json
+dataset_kwargs:
+  data_files: 
+    test: "/home/unitree/omni3d/SUNRGBD/*.annotations.json"
+task: omni3d_sunrgbd
+test_split: test
+output_type: generate_until
+
+doc_to_visual: !function utils.omni3d_doc_to_visual
+doc_to_text: !function utils.omni3d_doc_to_text
+# doc_to_target: !function utils.omni3d_doc_to_target
+
+generation_kwargs:
+  max_new_tokens: 100
+  temperature: 0
+  do_sample: false
+
+process_results: !function utils.omni3d_process_results
+
+metric_list:
+  - metric: AP3D@15
+    aggregation: !function utils.omni3d_aggregate_ap15
+    higher_is_better: true
+
+metadata:
+  version: 0.0
