@@ -12,6 +12,7 @@ from loguru import logger as eval_logger
 from scipy.spatial import ConvexHull, HalfspaceIntersection
 from scipy.spatial.qhull import QhullError
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial.transform import Rotation as R_scipy
 
 # 设置自己omni 四个数据文件的根目录
 data_root = os.getenv("DATA_ROOT","/home/unitree/桌面/datasets/omni3d/datasets")
@@ -60,12 +61,12 @@ def omni3d_doc_to_visual(doc):
 def omni3d_process_results(doc, result):
     # 过滤后图片里面 没有样本  返回 None 会跳过这个样本  
     if not doc.get("object_grounding") or len(doc["object_grounding"]) == 0:  
-        return None  
+        return {}  
     
     pred = result[0]
     pred_bbox_3d = parse_bbox_3d_from_text(pred)
-    predNums = len(pred_bbox_3d) # 预测的物体数量
-    gtNums = len(doc["object_grounding"])
+    # predNums = len(pred_bbox_3d) # 预测的物体数量
+    # gtNums = len(doc["object_grounding"])
 
     # 验证：
     # print("预测的9DoF：",convert_normalized_angles_to_rad(pred_bbox_3d[0]["bbox_3d"]))
@@ -75,13 +76,13 @@ def omni3d_process_results(doc, result):
 
     # 获取pred 和gt 的8个顶点坐标
     pred_vertices_list = []
-    # 每张图片的相机旋转矩阵 是固定的 选第一个就行
-    R_cam =  doc["object_grounding"][0].get("R_cam", None)
+    pred_eular = convert_normalized_angles_to_rad(pred_bbox_3d[0]['bbox_3d'])[-3:]
+    rx, ry, rz = pred_eular[0], pred_eular[1], pred_eular[2]
+    R_cam = euler_xyz_to_rotation_matrix(rx, ry, rz)
     for item in pred_bbox_3d:
         center = item['bbox_3d'][:3]
         dimensions = item['bbox_3d'][3:6]
         roll, pitch, yaw = item['bbox_3d'][6:9]
-        
         vertices_3d = get_cuboid_vertices_3d(center, dimensions, R_cam)
         pred_vertices_list.append(vertices_3d)
     gt_vertices_list = []
@@ -325,6 +326,7 @@ def box3d_overlap_polyhedral(boxes_dt, boxes_gt):
     return ious
 
 def match_boxes_by_iou(iou_matrix, iou_threshold=0.1):
+    
     """
     根据 IoU 矩阵用匈牙利算法匹配预测框和GT框。
 
@@ -360,3 +362,34 @@ def match_boxes_by_iou(iou_matrix, iou_threshold=0.1):
     unmatched_gt = [j for j in range(B2) if j not in matched_gt]
 
     return matches, unmatched_pred, unmatched_gt
+
+
+def euler_xyz_to_rotation_matrix(rx, ry, rz):
+    """
+    将欧拉角 [rx, ry, rz] (弧度) 转换回 3x3 旋转矩阵 R。
+
+    使用的约定与原有的 rotation_matrix_to_euler_xyz 函数严格一致：
+    - 旋转顺序/约定：'xyz' (内旋顺序)
+    - 角度单位：弧度 (radians)
+    
+    Args:
+        rx (float): 绕 X 轴的旋转角 (弧度)。
+        ry (float): 绕 Y 轴的旋转角 (弧度)。
+        rz (float): 绕 Z 轴的旋转角 (弧度)。
+        
+    Returns:
+        np.ndarray: 3x3 的旋转矩阵 R。
+    """
+    
+    # 角度列表顺序必须与 'xyz' 顺序对应，即 [rx, ry, rz]
+    euler_angles = [rx, ry, rz]
+    
+    # 使用 from_euler 方法，指定相同的 'xyz' 顺序和弧度单位
+    r = R_scipy.from_euler(
+        seq='xyz', 
+        angles=euler_angles, 
+        degrees=False  # 必须是 False，因为您原来的函数返回的是弧度
+    )
+    
+    # 将 Rotation 对象转换为 3x3 矩阵
+    return r.as_matrix()
