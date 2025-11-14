@@ -1,6 +1,6 @@
 import os
 import sys
-import yaml 
+import time
 import json
 from pathlib import Path  
 
@@ -49,7 +49,7 @@ def omni3d_doc_to_target(doc):
       
     return bbox_3d_list
 def omni3d_doc_to_visual(doc):
-
+    # time.sleep(1.5)  # 避免触碰rpm
     image_path = doc["image_identifier"]  
     full_image_path = os.path.join(data_root, image_path)
     if not os.path.exists(full_image_path):  
@@ -76,13 +76,16 @@ def omni3d_process_results(doc, result):
 
     # 获取pred 和gt 的8个顶点坐标
     pred_vertices_list = []
-    pred_eular = convert_normalized_angles_to_rad(pred_bbox_3d[0]['bbox_3d'])[-3:]
-    rx, ry, rz = pred_eular[0], pred_eular[1], pred_eular[2]
-    R_cam = euler_xyz_to_rotation_matrix(rx, ry, rz)
+
+    
     for item in pred_bbox_3d:
         center = item['bbox_3d'][:3]
         dimensions = item['bbox_3d'][3:6]
-        roll, pitch, yaw = item['bbox_3d'][6:9]
+        # roll, pitch, yaw = item['bbox_3d'][6:9]
+        pred_eular = convert_normalized_angles_to_rad(item['bbox_3d'])[-3:]
+        rx, ry, rz = pred_eular[0], pred_eular[1], pred_eular[2]
+        R_cam = euler_xyz_to_rotation_matrix(rx, ry, rz)
+
         vertices_3d = get_cuboid_vertices_3d(center, dimensions, R_cam)
         pred_vertices_list.append(vertices_3d)
     gt_vertices_list = []

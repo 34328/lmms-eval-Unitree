@@ -11,7 +11,7 @@ doc_to_text: !function utils.omni3d_doc_to_text
 doc_to_target: !function utils.omni3d_doc_to_target  
   
 generation_kwargs:  
-  max_new_tokens: 1000
+  max_new_tokens: 10000
   temperature: 0  
   do_sample: false  
   
