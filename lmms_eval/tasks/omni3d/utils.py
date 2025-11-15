@@ -65,6 +65,11 @@ def omni3d_process_results(doc, result):
     
     pred = result[0]
     pred_bbox_3d = parse_bbox_3d_from_text(pred)
+
+    # 获取预测和真实的类别列表
+    pred_categories = [item['label'] for item in pred_bbox_3d]
+    gt_categories = [item['category'] for item in doc["object_grounding"]]
+
     # predNums = len(pred_bbox_3d) # 预测的物体数量
     # gtNums = len(doc["object_grounding"])
 
@@ -91,40 +96,82 @@ def omni3d_process_results(doc, result):
     gt_vertices_list = []
     for item in doc["object_grounding"]:
         gt_vertices_list.append(item.get("bbox3d_cam"))
+    
+    # 1. 计算 IoU 矩阵
     iou_matrix = box3d_overlap_polyhedral(pred_vertices_list, gt_vertices_list)
-    # print(iou_matrix)
-    matches, unmatched_pred, unmatched_gt = match_boxes_by_iou(iou_matrix, iou_threshold=0.01)
+    # 2. 最大二分图匹配 (仅基于 IoU)
+    matches_iou, _, _ = match_boxes_by_iou(iou_matrix, iou_threshold=0.01)
+    # 3. 增加类别匹配过滤
+    final_matches = []
+    for p_idx, g_idx, iou in matches_iou:
+        # 类别匹配检查：只有 IoU 匹配，且类别也匹配时，才算作有效匹配
+        if pred_categories[p_idx] == gt_categories[g_idx]:
+            final_matches.append((p_idx, g_idx, iou))
 
-    pred_scores = np.ones(len(pred_vertices_list))  # 示例：全1；实际应为模型输出的置信度
+    # 4. 准备计算 AP (使用过滤后的 final_matches)
+    matches = final_matches
+    
+    # 确保每个 GT 框只被匹配一次
+    gt_matched_flags = np.zeros(len(gt_vertices_list), dtype=bool)
+    
+    # 获取预测框的置信度 (这里假设 pred_bbox_3d 列表的顺序与 pred_vertices_list 一致)
+    # 按照Qwen开发者Issues里面说的 置信度 假设其分数全为1.0
+    pred_scores = np.ones(len(pred_vertices_list)) 
 
-    # 按置信度从高到低排序
+    # 按置信度从高到低排序 (使用预测列表的索引)
     sorted_idx = np.argsort(-pred_scores)
+    
     tp = []
     fp = []
-    for i in sorted_idx:
-        # 是否匹配上
-        matched = any(m[0] == i and m[2] >= 0.15 for m in matches)
-        if matched:
+    
+    for p_idx in sorted_idx:
+        is_matched = False
+        
+        # 遍历所有有效的最终匹配，看是否有任何匹配涉及当前预测框 p_idx
+        for match_p_idx, match_g_idx, iou in matches:
+            # 必须满足 IoU 阈值 AND 类别已在 final_matches 中过滤 AND GT 框尚未被匹配
+            if match_p_idx == p_idx and iou >= 0.15 and not gt_matched_flags[match_g_idx]:
+                # 找到第一个合格匹配
+                is_matched = True
+                gt_matched_flags[match_g_idx] = True # 标记该 GT 框已被使用
+                break
+                
+        if is_matched:
             tp.append(1)
             fp.append(0)
         else:
             tp.append(0)
             fp.append(1)
 
+    # 5. 计算 AP15 (AP@0.15)
     tp = np.cumsum(tp)
     fp = np.cumsum(fp)
-    recall = tp / (len(gt_vertices_list) + 1e-8)
-    precision = tp / (tp + fp + 1e-8)
+    
+    # 真实目标的数量 (作为召回率的分母)
+    gt_count = len(doc["object_grounding"])
+    
+    if gt_count == 0:
+        ap15 = 1.0 # 没有真实目标，如果没有预测框(fp=0)，AP=1
+    elif len(tp) == 0:
+        ap15 = 0.0 # 有真实目标，但没有预测框
+    else:
+        recall = tp / (gt_count + 1e-8)
+        precision = tp / (tp + fp + 1e-8)
+    
+        # 11点插值法 (这里使用 101 个点插值，更精确)
+        recall_points = np.linspace(0, 1, 101)
+        
+        # 计算插值后的最大精度
+        precision_interp = [np.max(precision[recall >= r]) if np.any(recall >= r) else 0 for r in recall_points]
+        ap15 = np.mean(precision_interp)
 
-    # 计算 AP15
-    recall_points = np.linspace(0, 1, 101)
-    precision_interp = [np.max(precision[recall >= r]) if np.any(recall >= r) else 0 for r in recall_points]
-    ap15 = np.mean(precision_interp)
-    # print(f"当前样本 AP15 (基于matches) = {ap15:.4f}")
     # 返回指标字典  
     return {  
         "ap15": ap15  # 这个键名要与 YAML 中的 metric 名称对应  
     }
+
+
+
 
 def omni3d_aggregate_results(results):  
     """  
