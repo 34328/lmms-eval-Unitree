@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image  
+import cv2
 
 import torch
 from loguru import logger as eval_logger  
@@ -13,9 +14,15 @@ from scipy.spatial import ConvexHull, HalfspaceIntersection
 from scipy.spatial.qhull import QhullError
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.transform import Rotation as R_scipy
+from lmms_eval.tasks.omni3d.prepare_data.visualize_bbox import get_cuboid_vertices_3d as get_cuboid_vertices_3d_gemini
+from lmms_eval.tasks.omni3d.prepare_data.visualize_bbox import draw_3d_bbox_simple
 
 # 设置自己omni 四个数据文件的根目录
 data_root = os.getenv("DATA_ROOT","/home/unitree/桌面/datasets/omni3d/datasets")
+model_id = os.getenv("MODEL_ID","") # 自己训练的模型和Qwen不是一个坐标系
+SAVE_VISUAL_PATH = os.getenv("SAVE_VISUAL_PATH","")
+if SAVE_VISUAL_PATH:
+    os.makedirs(SAVE_VISUAL_PATH, exist_ok=True)
 
 
 def omni3d_doc_to_text(doc, lmms_eval_specific_kwargs=None):    
@@ -58,6 +65,143 @@ def omni3d_doc_to_visual(doc):
     return [Image.open(full_image_path).convert("RGB")]
 
 
+def visualize_bbox3d_comparison(doc, pred_vertices_list, gt_vertices_list, data_root, save_path):
+    """
+    可视化预测和GT的3D bbox对比，将两张图像拼接后保存
+    
+    Args:
+        doc: 包含图像路径和相机内参的文档字典
+        pred_vertices_list: 预测的3D bbox顶点列表，每个元素是8x3数组
+        gt_vertices_list: GT的3D bbox顶点列表，每个元素是8x3数组
+        data_root: 数据根目录
+        save_path: 保存路径
+    """
+    try:
+        # 获取图像路径
+        image_path = doc.get("image_identifier", "")
+        if not image_path:
+            eval_logger.warning("无法获取图像路径，跳过可视化")
+            return
+        
+        full_image_path = os.path.join(data_root, image_path)
+        if not os.path.exists(full_image_path):
+            eval_logger.warning(f"图像文件不存在: {full_image_path}，跳过可视化")
+            return
+        
+        # 读取图像
+        image = cv2.imread(full_image_path)
+        if image is None:
+            eval_logger.warning(f"无法读取图像: {full_image_path}，跳过可视化")
+            return
+        
+        # 获取内参矩阵K
+        camera_anns = doc.get("camera_annotations", {})
+        intrinsic = camera_anns.get("intrinsic", None)
+        if intrinsic is None:
+            eval_logger.warning("无法获取相机内参，跳过可视化")
+            return
+        
+        # 转换为numpy数组
+        K = np.array(intrinsic)
+        # 如果是4x4矩阵，提取3x3部分
+        if K.shape == (4, 4):
+            K = K[:3, :3]
+        
+        # 创建两个图像副本用于绘制
+        image_pred = image.copy()
+        image_gt = image.copy()
+        
+        # 定义颜色列表
+        colors = [
+            (0, 255, 0),    # 绿色
+            (255, 0, 0),    # 蓝色
+            (0, 0, 255),    # 红色
+            (255, 255, 0),  # 青色
+            (255, 0, 255),  # 洋红
+            (0, 255, 255),  # 黄色
+            (128, 0, 128),  # 紫色
+            (255, 165, 0),  # 橙色
+        ]
+        
+        # 绘制预测的bbox
+        for i, vertices_3d in enumerate(pred_vertices_list):
+            color = colors[i % len(colors)]
+            try:
+                image_pred = draw_3d_bbox_simple(
+                    image_pred, vertices_3d, K, 
+                    color=color, thickness=2
+                )
+            except Exception as e:
+                eval_logger.warning(f"绘制预测bbox {i} 失败: {e}")
+        
+        # 绘制GT的bbox
+        for i, vertices_3d in enumerate(gt_vertices_list):
+            color = colors[i % len(colors)]
+            try:
+                image_gt = draw_3d_bbox_simple(
+                    image_gt, vertices_3d, K, 
+                    color=color, thickness=2
+                )
+            except Exception as e:
+                eval_logger.warning(f"绘制GT bbox {i} 失败: {e}")
+        
+        # 添加标题文本
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.8
+        thickness = 2
+        text_color = (255, 255, 255)
+        bg_color = (0, 0, 0)
+        
+        # 在预测图像上添加标题
+        text_pred = "Prediction"
+        (text_width, text_height), baseline = cv2.getTextSize(
+            text_pred, font, font_scale, thickness
+        )
+        cv2.rectangle(
+            image_pred, 
+            (10, 10), 
+            (10 + text_width + 10, 10 + text_height + baseline + 10),
+            bg_color, -1
+        )
+        cv2.putText(
+            image_pred, text_pred, (15, 10 + text_height + 5),
+            font, font_scale, text_color, thickness
+        )
+        
+        # 在GT图像上添加标题
+        text_gt = "Ground Truth"
+        (text_width, text_height), baseline = cv2.getTextSize(
+            text_gt, font, font_scale, thickness
+        )
+        cv2.rectangle(
+            image_gt, 
+            (10, 10), 
+            (10 + text_width + 10, 10 + text_height + baseline + 10),
+            bg_color, -1
+        )
+        cv2.putText(
+            image_gt, text_gt, (15, 10 + text_height + 5),
+            font, font_scale, text_color, thickness
+        )
+        
+        # 拼接两个图像（水平拼接）
+        combined_image = np.hstack([image_pred, image_gt])
+        
+        # 生成保存文件名（使用完整路径避免冲突）
+        image_name_no_ext = os.path.splitext(image_path)[0]
+        # 处理路径中的特殊字符，替换为下划线
+        safe_image_name = image_name_no_ext.replace('/', '_').replace('\\', '_')
+        # 移除可能的其他特殊字符
+        safe_image_name = ''.join(c if c.isalnum() or c in ('_', '-') else '_' for c in safe_image_name)
+        output_path = os.path.join(save_path, f"{safe_image_name}_vis.jpg")
+        
+        # 保存图像
+        cv2.imwrite(output_path, combined_image)
+        eval_logger.info(f"可视化图像已保存: {output_path}")
+    except Exception as e:
+        eval_logger.warning(f"可视化过程中出错: {e}")
+
+
 def omni3d_process_results(doc, result):
     # 过滤后图片里面 没有样本  返回 None 会跳过这个样本  
     if not doc.get("object_grounding") or len(doc["object_grounding"]) == 0:  
@@ -90,12 +234,41 @@ def omni3d_process_results(doc, result):
         pred_eular = convert_normalized_angles_to_rad(item['bbox_3d'])[-3:]
         rx, ry, rz = pred_eular[0], pred_eular[1], pred_eular[2]
         R_cam = euler_xyz_to_rotation_matrix(rx, ry, rz)
-
+        
         vertices_3d = get_cuboid_vertices_3d(center, dimensions, R_cam)
+
+        if "Qwen" not in model_id and model_id != "":
+            TRANSFORM_MATRIX = np.array([
+                [1, 0, 0],    # X' = X (right stays right)
+                    [0, 0, 1],    # Y' = Z (forward from old depth)
+                    [0, -1, 0]    # Z' = -Y (up from old -down)
+                ])
+                # 应用逆变换（转回原始坐标系）
+            vertices_3d = (TRANSFORM_MATRIX.T @ vertices_3d.T).T
         pred_vertices_list.append(vertices_3d)
+    
     gt_vertices_list = []
     for item in doc["object_grounding"]:
-        gt_vertices_list.append(item.get("bbox3d_cam"))
+        if "bbox3d_cam" in item:
+            gt_vertices_list.append(item.get("bbox3d_cam"))
+        else:
+            center = item['bbox_3d'][:3]
+            dimensions = item['bbox_3d'][3:6]
+            roll, pitch, yaw = item['bbox_3d'][6:9]
+            R_cam = euler_xyz_to_rotation_matrix(roll, pitch, yaw)
+            vertices_3d = get_cuboid_vertices_3d(center, dimensions, R_cam)
+            TRANSFORM_MATRIX = np.array([
+                [1, 0, 0],    # X' = X (right stays right)
+                [0, 0, 1],    # Y' = Z (forward from old depth)
+                [0, -1, 0]    # Z' = -Y (up from old -down)
+            ])
+            # 应用逆变换（转回原始坐标系）
+            vertices_3d = (TRANSFORM_MATRIX.T @ vertices_3d.T).T
+            gt_vertices_list.append(vertices_3d)
+    
+    # 可视化：如果设置了SAVE_VISUAL_PATH，保存预测和GT的bbox可视化
+    if SAVE_VISUAL_PATH:
+        visualize_bbox3d_comparison(doc, pred_vertices_list, gt_vertices_list, data_root, SAVE_VISUAL_PATH)
     
     # 1. 计算 IoU 矩阵
     iou_matrix = box3d_overlap_polyhedral(pred_vertices_list, gt_vertices_list)
@@ -232,14 +405,14 @@ def get_cuboid_vertices_3d(center, dimensions, R=None):
     # 相对于中心的8个顶点（局部坐标系）
     # 格式：[x, y, z]
     vertices_local = np.array([
-        [-l/2, -h/2, -w/2],  # v0: 左下后 (left-bottom-back)
-        [ l/2, -h/2, -w/2],  # v1: 右下后 (right-bottom-back)
-        [ l/2,  h/2, -w/2],  # v2: 右上后 (right-top-back)
-        [-l/2,  h/2, -w/2],  # v3: 左上后 (left-top-back)
-        [-l/2, -h/2,  w/2],  # v4: 左下前 (left-bottom-front)
-        [ l/2, -h/2,  w/2],  # v5: 右下前 (right-bottom-front)
-        [ l/2,  h/2,  w/2],  # v6: 右上前 (right-top-front)
-        [-l/2,  h/2,  w/2],  # v7: 左上前 (left-top-front)
+        [-w/2, -h/2, -l/2],  # v0: 左下后 (left-bottom-back)
+        [ w/2, -h/2, -l/2],  # v1: 右下后 (right-bottom-back)
+        [ w/2,  h/2, -l/2],  # v2: 右上后 (right-top-back)
+        [-w/2,  h/2, -l/2],  # v3: 左上后 (left-top-back)
+        [-w/2, -h/2,  l/2],  # v4: 左下前 (left-bottom-front)
+        [ w/2, -h/2,  l/2],  # v5: 右下前 (right-bottom-front)
+        [ w/2,  h/2,  l/2],  # v6: 右上前 (right-top-front)
+        [-w/2,  h/2,  l/2],  # v7: 左上前 (left-top-front)
     ])
     
     # 应用旋转
