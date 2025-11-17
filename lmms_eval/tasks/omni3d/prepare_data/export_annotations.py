@@ -450,6 +450,8 @@ def export_image_annotations(loader, img_id, output_dir=None, visualize=False, v
         },
         "object_grounding": []
     }
+    if not os.path.exists(output["image_path"]):
+        return None
     
     # 转换每个对象的标注
     for idx, ann in enumerate(anns):
@@ -512,14 +514,23 @@ def export_image_annotations(loader, img_id, output_dir=None, visualize=False, v
         output_file = os.path.join(output_dir, f"{img_name}.annotations.json")
         
         with open(output_file, 'w') as f:
-            json.dump(output, f, indent=4)
+            json.dump([output], f, indent=4)
         
         print(f"  保存到: {output_file}")
         
         # 复制图像文件（使用已经映射和验证过的img_path）
         if img_path and os.path.exists(img_path):
-            shutil.copy(img_path, output_file.replace(".json", ".jpg"))
-            print(f"  复制图片到: {output_file.replace('.json', '.jpg')}")
+            new_image_path = output_file.replace(".json", ".jpg")
+            shutil.copy(img_path, new_image_path)
+            print(f"  复制图片到: {new_image_path}")
+            
+            # 更新 image_identifier 和 image_path 为新路径
+            output["image_identifier"] = os.path.relpath(new_image_path, os.path.dirname(output_dir)) if output_dir else new_image_path
+            output["image_path"] = new_image_path
+            
+            # 重新保存JSON文件（因为image_identifier和image_path已更新）
+            with open(output_file, 'w') as f:
+                json.dump([output], f, indent=4)
         else:
             print(f"  警告: 图片文件不存在，跳过复制: {img_path}")
 
