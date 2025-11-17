@@ -19,7 +19,7 @@ process_results: !function utils.omni3d_process_results
 
 metric_list:
   - metric: ap15  
-    aggregation: !function utils.omni3d_aggregate_ap15
+    aggregation: !function utils.omni3d_aggregate_results
     higher_is_better: true
 
 metadata:
