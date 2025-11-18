@@ -14,9 +14,10 @@ from scipy.spatial.qhull import QhullError
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.transform import Rotation as R_scipy
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from visiual_test import visualize_image_with_annotations
 # 设置自己omni 四个数据文件的根目录
 data_root = os.getenv("DATA_ROOT","/home/unitree/桌面/datasets/omni3d/datasets")
-
 
 def omni3d_doc_to_text(doc, lmms_eval_specific_kwargs=None):    
     if lmms_eval_specific_kwargs is None:    
@@ -70,15 +71,6 @@ def omni3d_process_results(doc, result):
     pred_categories = [item['label'] for item in pred_bbox_3d]
     gt_categories = [item['category'] for item in doc["object_grounding"]]
 
-    # predNums = len(pred_bbox_3d) # 预测的物体数量
-    # gtNums = len(doc["object_grounding"])
-
-    # 验证：
-    # print("预测的9DoF：",convert_normalized_angles_to_rad(pred_bbox_3d[0]["bbox_3d"]))
-    # print("预测的9DoF：",convert_normalized_angles_to_rad(pred_bbox_3d[1]["bbox_3d"]))
-    # print("真实的9DoF",doc["object_grounding"][0]["bbox_3d"])
-    # print("真实的9DoF",doc["object_grounding"][1]["bbox_3d"])
-
     # 获取pred 和gt 的8个顶点坐标
     pred_vertices_list = []
 
@@ -97,6 +89,15 @@ def omni3d_process_results(doc, result):
     for item in doc["object_grounding"]:
         gt_vertices_list.append(item.get("bbox3d_cam"))
     
+
+    # 可视化测试验证
+    # image_path = doc["image_identifier"]  
+    # full_image_path = os.path.join(data_root, image_path)
+    # visualize_image_with_annotations(full_image_path, doc["object_grounding"], 
+    #                                  np.array(doc["camera_annotations"]["intrinsic"])[:3, :3], 
+    #                                  pred_vertices_list)
+
+
     # 1. 计算 IoU 矩阵
     iou_matrix = box3d_overlap_polyhedral(pred_vertices_list, gt_vertices_list)
     # 2. 最大二分图匹配 (仅基于 IoU)
@@ -192,65 +193,27 @@ def omni3d_aggregate_results(results):
 
 
 def get_cuboid_vertices_3d(center, dimensions, R=None):
-    """
-    计算3D立方体的8个顶点（相机坐标系）
-    根据DATA.md中的定义：
-    - 坐标系：+x right, +y down, +z toward screen
-    - 顶点顺序：
-                v4_____________________v5
-                /|                    /|
-               / |                   / |
-              /  |                  /  |
-             /___|_________________/   |
-          v0|    |                 |v1 |
-            |    |                 |   |
-            |    |                 |   |
-            |    |                 |   |
-            |    |_________________|___|
-            |   / v7               |   /v6
-            |  /                   |  /
-            | /                    | /
-            |/_____________________|/
-            v3                     v2
-    
-    Args:
-        center: [x, y, z] 中心点（相机坐标系）
-        dimensions: [w, h, l] 宽、高、长（米）
-        R: 3x3旋转矩阵（可选）
-    Returns:
-        vertices: 8x3数组，8个顶点的3D坐标（按照v0-v7的顺序）
-    """
     x, y, z = center
-    w, h, l = dimensions
-    
-    # 根据cubercnn/util/math_util.py中的实现：
-    # X坐标：v0,v3,v4,v7是-l/2，v1,v2,v5,v6是+l/2
-    # Y坐标：v0,v1,v4,v5是-h/2，v2,v3,v6,v7是+h/2  
-    # Z坐标：v0,v1,v2,v3是-w/2，v4,v5,v6,v7是+w/2
-    # 坐标系：+x right, +y down, +z toward screen
-    
-    # 相对于中心的8个顶点（局部坐标系）
-    # 格式：[x, y, z]
+    x_size, y_size, z_size = dimensions  # 就是你 prompt 里的 x,y,z size
+
     vertices_local = np.array([
-        [-l/2, -h/2, -w/2],  # v0: 左下后 (left-bottom-back)
-        [ l/2, -h/2, -w/2],  # v1: 右下后 (right-bottom-back)
-        [ l/2,  h/2, -w/2],  # v2: 右上后 (right-top-back)
-        [-l/2,  h/2, -w/2],  # v3: 左上后 (left-top-back)
-        [-l/2, -h/2,  w/2],  # v4: 左下前 (left-bottom-front)
-        [ l/2, -h/2,  w/2],  # v5: 右下前 (right-bottom-front)
-        [ l/2,  h/2,  w/2],  # v6: 右上前 (right-top-front)
-        [-l/2,  h/2,  w/2],  # v7: 左上前 (left-top-front)
+        [-x_size/2, -y_size/2, -z_size/2],
+        [ x_size/2, -y_size/2, -z_size/2],
+        [ x_size/2,  y_size/2, -z_size/2],
+        [-x_size/2,  y_size/2, -z_size/2],
+        [-x_size/2, -y_size/2,  z_size/2],
+        [ x_size/2, -y_size/2,  z_size/2],
+        [ x_size/2,  y_size/2,  z_size/2],
+        [-x_size/2,  y_size/2,  z_size/2],
     ])
-    
-    # 应用旋转
+
     if R is not None:
         R = np.array(R)
         vertices_local = (R @ vertices_local.T).T
-    
-    # 平移到中心位置
+
     vertices = vertices_local + np.array([x, y, z])
-    
     return vertices
+
 
 # vertices_3d = get_cuboid_vertices_3d(center_cam, dimensions, R_cam)
 
