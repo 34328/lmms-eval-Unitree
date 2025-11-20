@@ -25,6 +25,12 @@ if SAVE_VISUAL_PATH:
     os.makedirs(SAVE_VISUAL_PATH, exist_ok=True)
 
 
+def get_doc_data(doc):
+    if "full_json_str" in doc and isinstance(doc["full_json_str"], str):
+        return json.loads(doc["full_json_str"])
+    return doc
+
+
 def omni3d_doc_to_text(doc, lmms_eval_specific_kwargs=None):    
     if lmms_eval_specific_kwargs is None:    
         lmms_eval_specific_kwargs = {}    
@@ -32,13 +38,16 @@ def omni3d_doc_to_text(doc, lmms_eval_specific_kwargs=None):
     pre_prompt = lmms_eval_specific_kwargs.get("pre_prompt", "")    
     post_prompt = lmms_eval_specific_kwargs.get("post_prompt", "")    
       
-    # 从列表中提取所有物体的类别  
-    object_grounding = doc.get("object_grounding", [])  
-    categories = [obj["category"] for obj in object_grounding]  
-      
-    # 去重并格式化类别列表  
-    unique_categories = list(set(categories))  # 去重  
-    class_str = ", ".join(unique_categories)  # 用逗号连接  
+    target_category = doc.get("target_category")
+    if target_category:
+        class_str = target_category
+    else:
+        # Fallback to original logic
+        doc_data = get_doc_data(doc)
+        object_grounding = doc_data.get("object_grounding", [])  
+        categories = [obj["category"] for obj in object_grounding]  
+        unique_categories = list(set(categories))  
+        class_str = ", ".join(unique_categories) 
       
     prompt = f"Locate the {class_str} in the provided image and output their positions and dimensions using 3D bounding boxes, The results must be in the JSON format: \
         `[{{\"bbox_3d\":[x_center, y_center, z_center, x_size, y_size, z_size, roll, pitch, yaw],\"label\":\"category\"}}]`."  
@@ -48,11 +57,17 @@ def omni3d_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 def omni3d_doc_to_target(doc):
     """  
     从 object_grounding 列表中提取所有对象的 bbox_3d  
-    """  
-    object_grounding = doc["object_grounding"]  
+    """
+    doc_data = get_doc_data(doc)
+    object_grounding = doc_data["object_grounding"]  
       
-    # 提取所有对象的 bbox_3d  
-    bbox_3d_list = [obj['bbox_3d'] for obj in object_grounding]  
+    target_category = doc.get("target_category")
+    if target_category:
+        # Filter to only include objects of the target category
+        bbox_3d_list = [obj['bbox_3d'] for obj in object_grounding if obj.get('category') == target_category]
+    else:
+        # 提取所有对象的 bbox_3d  
+        bbox_3d_list = [obj['bbox_3d'] for obj in object_grounding]  
       
     return bbox_3d_list
 def omni3d_doc_to_visual(doc):
@@ -203,16 +218,34 @@ def visualize_bbox3d_comparison(doc, pred_vertices_list, gt_vertices_list, data_
 
 
 def omni3d_process_results(doc, result):
+    doc_data = get_doc_data(doc)
+    target_category = doc.get("target_category")
+
     # 过滤后图片里面 没有样本  返回 None 会跳过这个样本  
-    if not doc.get("object_grounding") or len(doc["object_grounding"]) == 0:  
+    object_grounding = doc_data.get("object_grounding", [])
+    if not object_grounding or len(object_grounding) == 0:  
         return {}  
     
     pred = result[0]
     pred_bbox_3d = parse_bbox_3d_from_text(pred)
 
+    # Filter Predictions based on target_category if present
+    if target_category:
+        pred_bbox_3d = [item for item in pred_bbox_3d if item.get('label') == target_category]
+
     # 获取预测和真实的类别列表
     pred_categories = [item['label'] for item in pred_bbox_3d]
-    gt_categories = [item['category'] for item in doc["object_grounding"]]
+    
+    # Filter GT based on target_category
+    if target_category:
+        gt_objects = [item for item in object_grounding if item.get('category') == target_category]
+        if not gt_objects:
+             # Should be handled by dataset generation but safe check
+             return {}
+    else:
+        gt_objects = object_grounding
+
+    gt_categories = [item['category'] for item in gt_objects]
 
     # predNums = len(pred_bbox_3d) # 预测的物体数量
     # gtNums = len(doc["object_grounding"])
@@ -248,7 +281,7 @@ def omni3d_process_results(doc, result):
         pred_vertices_list.append(vertices_3d)
     
     gt_vertices_list = []
-    for item in doc["object_grounding"]:
+    for item in gt_objects:
         if "bbox3d_cam" in item:
             gt_vertices_list.append(item.get("bbox3d_cam"))
         else:
@@ -268,7 +301,8 @@ def omni3d_process_results(doc, result):
     
     # 可视化：如果设置了SAVE_VISUAL_PATH，保存预测和GT的bbox可视化
     if SAVE_VISUAL_PATH:
-        visualize_bbox3d_comparison(doc, pred_vertices_list, gt_vertices_list, data_root, SAVE_VISUAL_PATH)
+        # Ensure we pass the doc with camera annotations (doc_data)
+        visualize_bbox3d_comparison(doc_data, pred_vertices_list, gt_vertices_list, data_root, SAVE_VISUAL_PATH)
     
     # 1. 计算 IoU 矩阵
     iou_matrix = box3d_overlap_polyhedral(pred_vertices_list, gt_vertices_list)
@@ -321,7 +355,7 @@ def omni3d_process_results(doc, result):
     fp = np.cumsum(fp)
     
     # 真实目标的数量 (作为召回率的分母)
-    gt_count = len(doc["object_grounding"])
+    gt_count = len(gt_objects)
     
     if gt_count == 0:
         ap15 = 1.0 # 没有真实目标，如果没有预测框(fp=0)，AP=1

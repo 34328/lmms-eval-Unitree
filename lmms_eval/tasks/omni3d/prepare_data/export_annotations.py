@@ -466,6 +466,9 @@ def export_image_annotations(loader, img_id, output_dir=None, visualize=False, v
         elif 'bbox2D_tight' in ann and ann['bbox2D_tight'][0] != -1:
             bbox_2d = convert_bbox_2d(ann['bbox2D_tight'], BoxMode.XYXY_ABS, 'XYXY')
         
+        if ann.get("ignore", False):
+            continue
+        
         if bbox_2d is None:
             continue
         

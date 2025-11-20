@@ -59,7 +59,8 @@ def get_default_filter_settings():
         'max_height_thres': 1.50,        # 最大高度阈值（相对于图片高度）
         'modal_2D_boxes': False,         # 是否使用tight 2D boxes
         'trunc_2D_boxes': False,          # 是否使用truncated 2D boxes
-        'max_depth': 1e8,                # 最大深度
+        'max_depth': 100,                # 最大深度
+        'min_depth': 0.2,                # 最小深度
     }
 
 
@@ -83,6 +84,7 @@ def is_ignore_annotation(anno, filter_settings, image_height):
     # 检查深度
     center_cam = anno.get('center_cam', [0, 0, 1e9])
     ignore |= center_cam[2] > filter_settings['max_depth']
+    ignore |= center_cam[2] < filter_settings['min_depth']
     
     # 检查点云和分割点
     ignore |= (anno.get('lidar_pts', 0) == 0)

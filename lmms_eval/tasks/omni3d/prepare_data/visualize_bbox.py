@@ -272,6 +272,7 @@ def draw_3d_bbox_simple(img, vertices_3d, K, color=(0, 255, 0), thickness=2):
     vertices_2d, valid_mask = project_3d_to_2d(vertices_3d, K)
     
     if not valid_mask.any():
+        print("所有点都在相机后方")
         return img  # 所有点都在相机后方
     
     h, w = img.shape[:2]
@@ -289,7 +290,7 @@ def draw_3d_bbox_simple(img, vertices_3d, K, color=(0, 255, 0), thickness=2):
         i, j = edge
         
         # 只绘制两个端点都在相机前方的边，避免投影错误
-        if valid_mask[i] and valid_mask[j]:
+        if valid_mask[i] or valid_mask[j]:
             start_point = (vertices_2d[i][0], vertices_2d[i][1])
             end_point = (vertices_2d[j][0], vertices_2d[j][1])
             
