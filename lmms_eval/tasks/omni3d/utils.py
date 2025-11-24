@@ -402,7 +402,7 @@ def omni3d_aggregate_results(results):
 
 def get_cuboid_vertices_3d(center, dimensions, R=None):
     x, y, z = center
-    x_size, y_size, z_size = dimensions  # 就是你 prompt 里的 x,y,z size
+    w, h, l = dimensions  # 就是你 prompt 里的 x,y,z size
 
     vertices_local = np.array([
         [-w/2, -h/2, -l/2],  # v0: 左下后 (left-bottom-back)
