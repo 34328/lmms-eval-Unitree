@@ -1,0 +1,24 @@
+dataset_path: FlagEval/EmbSpatial-Bench
+# dataset_path: /home/unitree/Qwen_test/dataset_download/erqa
+# dataset_kwargs:  
+#   load_from_disk: True
+task: "embspatial"  
+test_split: test  
+output_type: generate_until  
+doc_to_text: !function utils.embspatial_doc_to_text  
+doc_to_messages: !function utils.embspatial_doc_to_messages  # v0.4 推荐接口  
+doc_to_target: !function utils.embspatial_doc_to_target  
+generation_kwargs:  
+  temperature: 0  
+  do_sample: false  
+process_results: !function utils.embspatial_process_results  
+metric_list:  
+  - metric: acc  
+    aggregation: !function utils.embspatial_aggregate_accuracy  
+    higher_is_better: true  
+lmms_eval_specific_kwargs:  
+  default:  
+    pre_prompt: ""  
+    post_prompt: ""  
+metadata:  
+  - version: 0.0
