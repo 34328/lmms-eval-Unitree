@@ -1,7 +1,7 @@
-dataset_path: json
+dataset_path: lmms_eval/tasks/omni3d/omni3d_dataset_builder.py
 dataset_kwargs:
   data_files: 
-    test: "/home/unitree/omni3d/Objectron/*.annotations.json"
+    test: "/home/jensen/remote_jensen/huangjianxin/vlm_benchmark/Omni3D/objectron/*.annotations.json"
 task: omni3d_objectron
 test_split: test
 output_type: generate_until
