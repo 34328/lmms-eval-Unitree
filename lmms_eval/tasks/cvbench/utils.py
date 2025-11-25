@@ -4,8 +4,7 @@ import time
 from pathlib import Path  
 from loguru import logger as eval_logger  
   
-  
-
+from lmms_eval.tasks._task_utils.unitree_eval_utils import process_multiple_choice
   
 def cvbench_doc_to_text(doc, lmms_eval_specific_kwargs=None):  
     """  
@@ -71,8 +70,8 @@ def cvbench_process_results(doc, result):
     if not result or len(result) == 0:  
         return {"acc": {"question_type": doc.get("task", "unknown"), "correct": 0}}  
     # print('pred:',result)
-    pred = result[0].strip()  
-    answer = doc.get("answer", "")  
+    pred = process_multiple_choice(result[0].strip())  
+    answer = process_multiple_choice(doc.get("answer", "") )
 
         
     is_correct = pred == answer    

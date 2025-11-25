@@ -24,7 +24,7 @@ def sat_doc_to_messages(doc, lmms_eval_specific_kwargs=None):
         lmms_eval_specific_kwargs: 额外的参数配置
     
     Returns:
-        list: 包含用户消息的列表，消息内容按照visual_indices排列图片和文本
+        list: 包含用户消息的列表，消息内容按照顺序排列图片和文本
     """
 
     time.sleep(0.2)  
@@ -34,24 +34,15 @@ def sat_doc_to_messages(doc, lmms_eval_specific_kwargs=None):
     messages = []
     user_content = []
 
-    # 按照SAT 论文中给的prompt设计模版
-    system_prompt = lmms_eval_specific_kwargs.get("system_prompt", "A chat between a curious human and an artificial intelligence assistant.\
-                                                    The assistant gives helpful, detailed, and polite answers to the human'squestions.")  
-    messages.append({  
-        "role": "system",  
-        "content": [{"type": "text", "text": system_prompt}]  
-    })  
     
     # 获取问题文本和预处理提示语
-    question = f" Human: Answer in natural language. {doc['question']}. \n Choose between the following options: {doc.get("answers")[0]} or {doc.get("answers")[1]}, just o the option \n ###Assistant:"
+    question = f" {doc['question']}. \n Choose between the following options: {doc.get("answers")}, just output the option"
  
 
     images = doc.get("image_bytes", []) 
     if images:
-        user_content.append({"type": "text", "text": "###Human:<im_start>"})
         for img in images:  
             user_content.append({"type": "image", "url": img})  
-        user_content.append({"type": "text", "text": "<im_end>"})
       
     # 添加文本  
     user_content.append({"type": "text", "text": question})  
