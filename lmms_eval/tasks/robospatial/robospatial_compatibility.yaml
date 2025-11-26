@@ -1,0 +1,21 @@
+dataset_path: /home/unitree/桌面/datasets/robospatial/robospatial/robosaptial
+dataset_kwargs:    
+  load_from_disk: True
+task: robospatial_compatibility 
+group: robospatial
+test_split: compatibility   
+output_type: generate_until  
+doc_to_text: !function utils.robospatial_doc_to_text  
+doc_to_messages: !function utils.robospatial_doc_to_messages 
+doc_to_target: answer  
+process_results: !function utils.robospatial_process_results  
+generation_kwargs:  
+  max_new_tokens: 1000
+  temperature: 0  
+  do_sample: false  
+metric_list:  
+  - metric: acc  
+    aggregation: !function utils.robospatial_aggregate_results  
+    higher_is_better: true  
+metadata:  
+  - version: 0.0

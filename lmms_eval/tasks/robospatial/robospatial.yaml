@@ -1,0 +1,11 @@
+group: robospatial
+task:  
+  - robospatial_context  
+  - robospatial_compatibility  
+  - robospatial_configuration
+aggregate_metric_list:  
+  - metric: acc  
+    aggregation: mean  
+    weight_by_size: true  
+metadata:  
+  version: 0.0
