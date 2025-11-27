@@ -107,6 +107,31 @@ def draw_result(gt: Dict, mask_img: Image, score: float, points: List[Tuple[int,
     except Exception as e:
         eval_logger.warning(f"Failed to draw result visualization: {e}")
 
+def where2place_doc_to_visual(doc):
+    """
+    Extract visual content from doc for models that use doc_to_visual interface.
+    Returns a list of PIL Images.
+    """
+    image = doc.get("image")
+    if image is None:
+        return []
+    
+    # If image is already a PIL Image, return it
+    if isinstance(image, Image.Image):
+        return [image.convert("RGB")]
+    
+    # If image is a path string, try to load it
+    if isinstance(image, str):
+        full_image_path = osp.join(DATA_ROOT, image)
+        if osp.exists(full_image_path):
+             return [Image.open(full_image_path).convert("RGB")]
+        else:
+             # If path doesn't exist, maybe it's already absolute or relative to cwd
+             if osp.exists(image):
+                  return [Image.open(image).convert("RGB")]
+    
+    return []
+
 def where2place_doc_to_messages(doc, lmms_eval_specific_kwargs=None):
     if lmms_eval_specific_kwargs is None:
         lmms_eval_specific_kwargs = {}
@@ -183,6 +208,8 @@ def parse_points(text):
     return points
 
 def where2place_process_results(doc, result):
+    if len(result) == 0:
+        return {"acc": {"score": 0.0, "sub_task": doc.get("sub_task", "unknown")}}
     pred_text = result[0]
     points = parse_points(pred_text)
     points_array = np.array(points)

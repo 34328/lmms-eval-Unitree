@@ -16,17 +16,39 @@ from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 
-try:
-    import google.generativeai as genai
-    from google.generativeai.types import HarmBlockThreshold, HarmCategory
+# Check if we should use Vertex AI mode
+USE_VERTEXAI = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "False").lower() == "true"
 
-    NUM_SECONDS_TO_SLEEP = 30
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-    genai.configure(api_key=GOOGLE_API_KEY)
+if USE_VERTEXAI:
+    try:
+        from google import genai
+        from google.genai.types import HttpOptions
+        
+        NUM_SECONDS_TO_SLEEP = 30
+        genai_client = None  # Will be initialized in __init__
+        genai_module = genai
+        
+    except Exception as e:
+        eval_logger.error(f"Error importing google.genai (Vertex AI): {str(e)}")
+        genai = None
+        genai_module = None
+        genai_client = None
+else:
+    try:
+        import google.generativeai as genai
+        from google.generativeai.types import HarmBlockThreshold, HarmCategory
 
-except Exception as e:
-    eval_logger.error(f"Error importing generativeai: {str(e)}")
-    genai = None
+        NUM_SECONDS_TO_SLEEP = 30
+        GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+        genai.configure(api_key=GOOGLE_API_KEY)
+        genai_module = genai
+        genai_client = None
+        
+    except Exception as e:
+        eval_logger.error(f"Error importing generativeai: {str(e)}")
+        genai = None
+        genai_module = None
+        genai_client = None
 
 try:
     import soundfile as sf
@@ -50,7 +72,22 @@ class GeminiAPI(lmms):
         super().__init__()
         self.model_version = model_version
         self.timeout = timeout
-        self.model = genai.GenerativeModel(model_version)
+        self.use_vertexai = USE_VERTEXAI
+        
+        if self.use_vertexai:
+            # Initialize Vertex AI client
+            if genai_module is None:
+                raise RuntimeError("Vertex AI mode requested but google.genai is not available")
+            from google.genai.types import HttpOptions
+            self.client = genai_module.Client(http_options=HttpOptions(api_version="v1"))
+            self.model = None  # Not used in Vertex AI mode
+        else:
+            # Initialize standard generativeai
+            if genai_module is None:
+                raise RuntimeError("Standard mode requested but google.generativeai is not available")
+            self.model = genai_module.GenerativeModel(model_version)
+            self.client = None  # Not used in standard mode
+            
         self.continual_mode = continual_mode
         self.response_persistent_file = ""
         self.interleave = interleave
@@ -115,15 +152,28 @@ class GeminiAPI(lmms):
         return img_size
 
     def encode_video(self, video_path):
-        uploaded_obj = genai.upload_file(path=video_path)
-        time.sleep(5)
-        self.video_pool.append(uploaded_obj)
-        return uploaded_obj
+        if self.use_vertexai:
+            # Vertex AI mode - upload file using client
+            uploaded_obj = self.client.files.upload(path=video_path)
+            time.sleep(5)
+            self.video_pool.append(uploaded_obj)
+            return uploaded_obj
+        else:
+            # Standard mode
+            uploaded_obj = genai_module.upload_file(path=video_path)
+            time.sleep(5)
+            self.video_pool.append(uploaded_obj)
+            return uploaded_obj
 
     def encode_audio(self, audio):
         audio_io = io.BytesIO()
         sf.write(audio_io, audio["array"], audio["sampling_rate"], format="WAV")
-        return genai.upload_file(audio_io, mime_type="audio/wav")
+        if self.use_vertexai:
+            # Vertex AI mode - upload file using client
+            return self.client.files.upload(audio_io, mime_type="audio/wav")
+        else:
+            # Standard mode
+            return genai_module.upload_file(audio_io, mime_type="audio/wav")
 
     def convert_modality(self, images):
         for idx, img in enumerate(images):
@@ -173,11 +223,6 @@ class GeminiAPI(lmms):
             if "temperature" not in gen_kwargs:
                 gen_kwargs["temperature"] = 0
 
-            config = genai.GenerationConfig(
-                max_output_tokens=gen_kwargs["max_new_tokens"],
-                temperature=gen_kwargs["temperature"],
-            )
-
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
             visuals = self.flatten(visuals)
             visuals = self.convert_modality(visuals)
@@ -189,23 +234,47 @@ class GeminiAPI(lmms):
 
             for attempt in range(5):
                 try:
-                    content = self.model.generate_content(
-                        message,
-                        generation_config=config,
-                        safety_settings={
-                            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-                            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                        },
-                    )
-                    content = content.text
+                    if self.use_vertexai:
+                        # Vertex AI mode
+                        config = {
+                            "max_output_tokens": gen_kwargs["max_new_tokens"],
+                            "temperature": gen_kwargs["temperature"],
+                            "thinking_config": {
+                                "thinking_budget": 24576,  # -1 means AUTOMATIC
+                            }
+                        }
+                        response = self.client.models.generate_content(
+                            model=self.model_version,
+                            contents=message,
+                            config=config,
+                        )
+                        content = response.text
+
+                    else:
+                        # Standard mode
+                        from google.generativeai.types import HarmBlockThreshold, HarmCategory
+                        config = genai_module.GenerationConfig(
+                            max_output_tokens=gen_kwargs["max_new_tokens"],
+                            temperature=gen_kwargs["temperature"],
+                        )
+                        content = self.model.generate_content(
+                            message,
+                            generation_config=config,
+                            safety_settings={
+                                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                            },
+                        )
+                        content = content.text
                     break
                 except Exception as e:
                     eval_logger.info(f"Attempt {attempt + 1} failed with error: {str(e)}")
                     if isinstance(e, ValueError):
                         try:
-                            eval_logger.info(f"Prompt feed_back: {content.prompt_feedback}")
+                            if not self.use_vertexai:
+                                eval_logger.info(f"Prompt feed_back: {content.prompt_feedback}")
                             content = ""
                             break
                         except Exception:
@@ -285,11 +354,18 @@ class GeminiAPI(lmms):
         for part in re.split(r"(<video>|<audio>)", text):
             if part == "<video>":
                 current_video_file_name = video_path[video_counter]
-                current_video_file = genai.upload_file(path=current_video_file_name)
-                while current_video_file.state.name == "processing":
-                    print("uploading file")
-                    time.sleep(5)
-                    current_video_file = genai.get_file(current_video_file.name)
+                if self.use_vertexai:
+                    current_video_file = self.client.files.upload(path=current_video_file_name)
+                    while current_video_file.state.name == "processing":
+                        print("uploading file")
+                        time.sleep(5)
+                        current_video_file = self.client.files.get(current_video_file.name)
+                else:
+                    current_video_file = genai_module.upload_file(path=current_video_file_name)
+                    while current_video_file.state.name == "processing":
+                        print("uploading file")
+                        time.sleep(5)
+                        current_video_file = genai_module.get_file(current_video_file.name)
                 if current_video_file.state.name == "FAILED":
                     print("uploading file failed, next question")
                     return 0

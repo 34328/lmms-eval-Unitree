@@ -2,6 +2,7 @@ import os
 from pathlib import Path  
 import yaml  
 from loguru import logger as eval_logger  
+from lmms_eval.tasks._task_utils.unitree_eval_utils import process_multiple_choice
   
 # 加载默认配置模板  
 with open(Path(__file__).parent / "_default_template_yaml", "r") as f:  
@@ -125,18 +126,12 @@ def erqa_process_results(doc, result):
     if not result or len(result) == 0:  
         return {"acc": {"question_type": doc.get("question_type", "unknown"), "correct": 0}}  
     # print('pred:',result)
-    pred = result[0].strip()  
+
     answer = doc.get("answer", "")  
-    # print('gt:',answer)
-    # 提取预测中的第一个字母并转为大写 
-    #  这样写是有点问题的，应该用正则表达式提取第一个字母，后面别的任务文本输出不行
-    processed_pred = ""    
-    if pred:    
-        pred_stripped = pred.lstrip()    
-        if pred_stripped:    
-            processed_pred = pred_stripped[0].upper()    
+    pred = process_multiple_choice(result[0].strip())  
+    answer = process_multiple_choice(doc.get("answer", "") )
         
-    is_correct = processed_pred == answer    
+    is_correct = pred == answer    
         
     return {"acc": {"question_type": doc.get("question_type", "unknown"), "correct": int(is_correct)}}
   
