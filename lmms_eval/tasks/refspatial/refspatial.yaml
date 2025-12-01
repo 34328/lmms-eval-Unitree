@@ -9,3 +9,8 @@ aggregate_metric_list:
     weight_by_size: true  
 metadata:  
   version: 0.0
+
+lmms_eval_specific_kwargs:  
+  pre_prompt: ""  
+  post_prompt: "Output the point coordinates in JSON format.\n For example:[{\"point_2d\": [x, y], \"label\": \"point_1\"}]"
+  modle_id: "qwen3-vl"

@@ -1,10 +1,14 @@
-import re 
+import re
+import os 
 import ast
 import json
 import time 
 from loguru import logger as eval_logger  
-  
 
+import numpy as np
+from lmms_eval.tasks._task_utils.unitree_eval_utils import *
+
+model_id = os.getenv("MODEL_ID", "qwen3-vl")
   
 def robospatial_doc_to_text(doc, lmms_eval_specific_kwargs=None):  
     """格式化问题文本"""  
@@ -46,9 +50,12 @@ def robospatial_process_results(doc, result):
     """处理单个样本的结果"""  
     if not result or len(result) == 0:  
         return {"acc": {"split_type": doc.get("split", "unknown"), "correct": 0}}  
+    
+    coordinate_cfg = MODEL_COORDINATE_CONFIGS[model_id] # 获取模型输出坐标的配置
 
     if doc['category']=="context":
-        pred = str(decode_json_points(result[0].strip())[0]) 
+        pred = decode_json_points(result[0].strip())[0]
+        pred = str(relative_to_absolute_points(pred,coordinate_cfg["default_image_size"] )) 
     else:
         pred = result[0].strip()
     
@@ -70,7 +77,6 @@ def robospatial_process_results(doc, result):
     }  
   
  
-  
 def robospatial_aggregate_results(results):  
     """聚合所有结果,按 split 类型分类统计"""  
     if not results:  
@@ -158,8 +164,8 @@ def decode_json_points(text: str):
         for item in data:
             if "point_2d" in item:
                 x, y = item["point_2d"]
-                x_norm = x / 1000.0
-                y_norm = y / 1000.0
+                x_norm = x 
+                y_norm = y 
                 points.append((x_norm, y_norm))
                 
                 # 获取label，如果没有则使用默认值

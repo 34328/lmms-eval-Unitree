@@ -1,21 +1,21 @@
-import re 
-import ast
+import os
 import json
 import time 
 
 import numpy as np
 from loguru import logger as eval_logger  
-  
 
-  
+from lmms_eval.tasks._task_utils.unitree_eval_utils import *
+
+model_id = os.getenv("MODEL_ID", "qwen3-vl")
+
 def refspatial_doc_to_text(doc, lmms_eval_specific_kwargs=None):  
     """格式化问题文本"""  
     if lmms_eval_specific_kwargs is None:  
         lmms_eval_specific_kwargs = {}  
       
     pre_prompt = lmms_eval_specific_kwargs.get("pre_prompt", "")  
-    post_prompt = lmms_eval_specific_kwargs.get("post_prompt", "")  
-      
+    post_prompt = lmms_eval_specific_kwargs.get("post_prompt", "")
     return f"{pre_prompt}{doc['prompt']}{post_prompt}"  
   
 
@@ -50,6 +50,8 @@ def refspatial_process_results(doc, result):
     if not result or len(result) == 0:  
         return {"acc": 0}    
     
+    coordinate_cfg = MODEL_COORDINATE_CONFIGS[model_id]
+    
     # 获取mask 便于计算 point是不是在mask内
     mask = np.array(doc.get("mask"))/255
     if mask.ndim == 3:
@@ -60,7 +62,11 @@ def refspatial_process_results(doc, result):
     points = decode_json_points(result[0].strip())
     if points is None:  
         return {"acc": 0} 
-    points = absolute_to_relative_points(points, mask.shape[1], mask.shape[0])
+    
+    if coordinate_cfg["is_relative"]: # 模型输出的是相对坐标  例如（500，800）
+        points= relative_to_absolute_points(points, coordinate_cfg["default_image_size"]) # 先转为01之间的相对坐标
+        points = np.array(absolute_to_relative_points(points, mask.shape)) # 再转为绝对坐标
+
     acc = 0.0
     if len(points) > 0:
         in_range = (points[:, 0] >= 0) & (points[:, 0] < mask.shape[1]) & \
@@ -92,8 +98,8 @@ def decode_json_points(text: str):
         for item in data:
             if "point_2d" in item:
                 x, y = item["point_2d"]
-                x_norm = x/ 1000.0 
-                y_norm = y/ 1000.0
+                x_norm = x
+                y_norm = y
                 points.append((x_norm, y_norm))
                 
                 # 获取label，如果没有则使用默认值
@@ -108,22 +114,3 @@ def decode_json_points(text: str):
         print(f"Error: {e}")
         return None
     
-
-def absolute_to_relative_points(points, width, height):  
-    """将绝对坐标转换为相对坐标  
-      
-    Args:  
-        points: 绝对坐标列表 [(x1, y1), (x2, y2), ...]  
-        width: 图像宽度  
-        height: 图像高度    
-        scale: 输出坐标的缩放比例，默认1000（0-1000范围）  
-      
-    Returns:  
-        相对坐标列表 [(x1_norm, y1_norm), (x2_norm, y2_norm), ...]  
-    """  
-    relative_points = []  
-    for x, y in points:  
-        x_norm = int(x * width) 
-        y_norm = int(y * height)
-        relative_points.append((x_norm, y_norm))  
-    return np.array(relative_points)

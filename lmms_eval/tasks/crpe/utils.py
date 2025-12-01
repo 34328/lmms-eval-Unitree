@@ -5,6 +5,9 @@ from pathlib import Path
 from loguru import logger as eval_logger  
   
 from lmms_eval.tasks._task_utils.unitree_eval_utils import process_multiple_choice
+
+# 改为数据集路径
+root_path = "/home/unitree/桌面/datasets/CRPE"
   
 def crpe_doc_to_text(doc, lmms_eval_specific_kwargs=None):  
     """  
@@ -29,7 +32,6 @@ def crpe_doc_to_messages(doc, lmms_eval_specific_kwargs=None):
     
     question = f"{doc['text']}" 
     
-    root_path = "/home/alex/datasets/crpe/CRPE"
     image_path = doc.get("image")
     full_path = os.path.join(root_path, image_path)
     user_content.append({"type": "image", "url": full_path})  

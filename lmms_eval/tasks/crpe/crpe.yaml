@@ -1,8 +1,8 @@
 dataset_path: json
 dataset_kwargs:  
   data_files: 
-  - /home/alex/datasets/crpe/CRPE/crpe_exist.jsonl  
-  - /home/alex/datasets/crpe/CRPE/crpe_relation.jsonl  
+  - /home/unitree/桌面/datasets/CRPE/crpe_exist.jsonl  
+  - /home/unitree/桌面/datasets/CRPE/crpe_relation.jsonl  
 task:  crpe
 test_split: train
 output_type: generate_until  
