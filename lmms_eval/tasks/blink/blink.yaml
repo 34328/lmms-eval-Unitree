@@ -1,0 +1,42 @@
+dataset_path: parquet  
+dataset_kwargs:  
+  data_files:  
+    test:   
+      - /home/unitree/桌面/datasets/Blink/blink/Art_Style/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Counting/val-00000-of-00001.parquet  
+      - /home/unitree/桌面/datasets/Blink/blink/Forensic_Detection/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Functional_Correspondence/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/IQ_Test/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Jigsaw/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Multi-view_Reasoning/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Object_Localization/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Relative_Depth/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Relative_Reflectance/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Semantic_Correspondence/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Spatial_Relation/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Visual_Correspondence/val-00000-of-00001.parquet
+      - /home/unitree/桌面/datasets/Blink/blink/Visual_Similarity/val-00000-of-00001.parquet
+
+task: "blink"  
+test_split: test  
+output_type: generate_until  
+doc_to_text: !function utils.blink_doc_to_text  
+doc_to_messages: !function utils.blink_doc_to_messages
+doc_to_target: !function utils.blink_doc_to_target
+generation_kwargs:  
+  max_new_tokens: 10
+  temperature: 0  
+  top_p: 1.0  
+  num_beams: 1  
+  do_sample: false  
+process_results: !function utils.blink_process_results  
+metric_list:  
+  - metric: acc
+    aggregation: !function utils.blink_aggregate_accuracy  
+    higher_is_better: true  
+lmms_eval_specific_kwargs:  
+  default:  
+    pre_prompt: ""  
+    post_prompt: "Answer with the option's letter from the given choices directly."  
+metadata:  
+  - version: 0.0
