@@ -81,36 +81,4 @@ def refspatial_process_results(doc, result):
     # test_split = doc.get("_config", {}).get("test_split") 
     return  {"acc": correct}  
 
-  
 
-def decode_json_points(text: str):
-    """Parse coordinate points from text format"""
-    try:
-        # 清理markdown标记
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0]
-        
-        # 解析JSON
-        data = json.loads(text)
-        points = []
-        labels = []
-        
-        for item in data:
-            if "point_2d" in item:
-                x, y = item["point_2d"]
-                x_norm = x
-                y_norm = y
-                points.append((x_norm, y_norm))
-                
-                # 获取label，如果没有则使用默认值
-                label = item.get("label", f"point_{len(points)}")
-                labels.append(label)
-            else:
-                return None
-        
-        return points
-        
-    except Exception as e:
-        print(f"Error: {e}")
-        return None
-    
