@@ -1,0 +1,21 @@
+dataset_path: json
+dataset_kwargs:    
+  data_files: /home/unitree/桌面/datasets/Points-Bench/points-bench/data.json
+task: pointsbench 
+
+test_split: train
+output_type: generate_until  
+doc_to_text: !function utils.pointsbench_doc_to_text  
+doc_to_messages: !function utils.pointsbench_doc_to_messages 
+doc_to_target: !function utils.pointsbench_doc_to_target
+process_results: !function utils.pointsbench_process_results  
+generation_kwargs:  
+  max_new_tokens: 1000
+  temperature: 0  
+  do_sample: false  
+metric_list:  
+  - metric: acc  
+    aggregation: !function utils.pointsbench_aggregate_accuracy
+    higher_is_better: true  
+metadata:  
+  - version: 0.0
