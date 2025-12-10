@@ -46,7 +46,7 @@ def load_image_points_map():
     except Exception as e:
         eval_logger.error(f"Error loading metadata csv: {e}")
 
-def get_steerable_context(doc,):
+def get_steerable_context(doc):
     """
     重构后的函数：根据 doc 信息生成 Steerable 任务的上下文提示。
     
@@ -56,16 +56,17 @@ def get_steerable_context(doc,):
     Returns:
         str: 构造好的提示信息 (包含换行符)，如果非 steerable 任务则返回空字符串。
     """
-    # 0. 确保数据已加载
-    if IMAGE_POINTS_MAP is None:
-        load_image_points_map()
         
     category = doc["category"]
     filename = doc["image_filename"]
     
-    # 1. 只有 steerable 类别才处理，其他直接返回空
+    # 0. 只有 steerable 类别才处理，其他直接返回空
     if category != "steerable":
         return ""
+    
+    # 1. 确保数据已加载
+    if IMAGE_POINTS_MAP is None:
+        load_image_points_map()
     
     # 2. 检查该图片是否有原始点数据
     if filename not in IMAGE_POINTS_MAP:
@@ -77,15 +78,15 @@ def get_steerable_context(doc,):
     
     for point in original_points:
         # 核心转换逻辑
-        p_x = point["x"] / 100.0
-        p_y = point["y"] / 100.0
-        pixel_coords_str.append(f"[{p_x:.3f}, {p_y:.3f}]")
+        p_x = int(point["x"] * 10.0)
+        p_y = int(point["y"] * 10.0)
+        pixel_coords_str.append(f"[{p_x},{p_y}]")
         
     # 5. 构造最终提示语
     if pixel_coords_str:
         points_str = ", ".join(pixel_coords_str)
         # 注意：这里加了前导换行符，以便拼接到 User Prompt 中
-        return f"\nThe image contains reference points at normalized coordinates (0-1): {points_str}.\n The query refers to this existing point."
+        return f"\nThe image contains reference points is  {points_str}.\n The query refers to this existing point."
         
     return ""
 

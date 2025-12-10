@@ -128,7 +128,7 @@ def decode_json_points(text: str):
         return points
         
     except Exception as e:
-        print(f"Error: {e}")
+        # print(f"Error: {e}")
         return None
 
 # 2d BBOX 不同模型配置
